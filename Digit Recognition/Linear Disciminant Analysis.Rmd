@@ -1,0 +1,146 @@
+---
+title: "HW2"
+author: "Hoa Dang"
+date: "February 18, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem 3
+```{r results='hide', message=FALSE, warnings=FALSE}
+library(MASS)
+library(dplyr)
+library(tibble)
+library(glmnet)
+```
+
+
+```{r}
+#Function that returns the misclassification
+misclass <- function(pred,label) {
+  accurate <- diag(table(pred,label))
+  accuracy_score <- sum(accurate/length(label))
+
+  print(1 - accuracy_score)
+}
+```
+
+##a. LDA on 256 dimensions
+Perform LDA on the original 256 dimensional space.
+```{r}
+train_3 <- read.csv("train_3.txt", header = FALSE)
+train_5 <- read.csv("train_5.txt", header = FALSE)
+train_8 <- read.csv("train_8.txt", header = FALSE)
+train_3$V257 <- train_3$V1 
+train_3$V1 <- '3'
+train_5$V257 <- train_5$V1 
+train_5$V1 <- '5'
+train_8$V257 <- train_8$V1 
+train_8$V1 <- '8'
+zip_train <- rbind(train_3,train_5,train_8)
+zip_test <- read.table("zip_test.txt")
+zip_test_358 <- zip_test[zip_test$V1 == '3'| zip_test$V1 == '5'|zip_test$V1 == '8' ,]
+
+```
+
+```{r}
+fit <- lda(V1~., zip_train, method = 'mle')
+pred_train <- predict(fit, zip_train)$class
+pred <- predict(fit, zip_test_358)$class
+
+Test_error <- sum(pred != zip_test_358$V1)/length(zip_test_358$V1)
+
+#training data misclassification rate
+misclass(pred_train,zip_train$V1)
+#test data misclassification rate
+misclass(pred,zip_test_358$V1)
+```
+
+##b. LDA on the first 49 Principal Components
+```{r}
+pc1 <- prcomp(zip_train %>% select(-V1), scale = TRUE)
+train <- as.data.frame(pc1$x) %>% select(PC1:PC49)
+
+train <- cbind(zip_train[,1],train)
+colnames(train)[1] <- c("V1")
+fit <- lda(V1~., train)
+
+#project test data onto the 49 principal component
+test <- as.data.frame(predict(pc1, newdata = zip_test_358 %>% select(-V1))) %>% select(PC1:PC49)
+test <- cbind(zip_test_358[,1],test)
+colnames(test)[1] <- c("V1")
+
+```
+
+```{r}
+pred_train <- predict(fit,train)$class
+pred <- predict(fit,test)$class
+
+#training data misclassification rate
+misclass(pred_train,zip_train$V1)
+#test data misclassification rate
+misclass(pred,zip_test_358$V1)
+```
+
+##c. LDA on Filter data by 2x2 pixels (Resized Data)
+```{r}
+#Function to resize dataset by 2x2 pixel
+resizematrix <- function(df) {
+
+  newdf <- df[1,1:65]
+
+  for (d in 1:nrow(df)) {
+    arow <- matrix(as.numeric(df[d,-1]),16,16)
+    mat <- c(df[d,1])
+    for (i in seq(1,15,2) ) {
+      for (j in seq(1,15,2)) {
+        mat <- c(mat, (mean(c(arow[i,j],arow[i,j+1],arow[i+1,j],arow[i+1,j+1]))))
+      }
+    }
+    newdf[d,] <- as.numeric(mat)
+  }
+  colnames(newdf) <- colnames(zip_train[,1:65])
+  return(newdf)
+}
+
+```
+
+```{r}
+train_resize <- resizematrix(zip_train)
+test_resize <- resizematrix(zip_test_358)
+
+fit <- lda(V1~., train_resize, method = 'mle')
+
+pred_train <- predict(fit,train_resize)$class
+pred <- predict(fit,test_resize)$class
+
+#Misclassification Rate for Training set
+misclass(pred_train,zip_train$V1)
+#Misclassification Rate for Test set
+misclass(pred,zip_test_358$V1)
+```
+
+##d. Logistic Regression on Resized Data
+```{r}
+train_resize_x <- as.matrix(train_resize[,-1])
+train_resize <- as.matrix(train_resize)
+
+test_resize_x <- as.matrix(test_resize[,-1])
+
+fit <- glmnet(train_resize[,-1],train_resize[,1],family ="multinomial")
+#choosing lambda at the end of the path
+lambda_min <- min(fit$lambda)
+
+pred_train <- predict(fit,train_resize_x,s= lambda_min,type="class")
+pred <- predict(fit,test_resize_x,s= lambda_min,type="class")
+
+#Misclassification Rate for Training set
+misclass(pred_train,zip_train$V1)
+#Misclassification Rate for Test set
+misclass(pred,zip_test_358$V1)
+
+```
+
