@@ -75,6 +75,7 @@ classify <- function(X, pars) {
   yhat = c()
   j = pars$j
   theta = pars$theta
+ 
   
   neg_class_indx <- X[,j]<=theta
   pos_class_indx <- X[,j] > theta
