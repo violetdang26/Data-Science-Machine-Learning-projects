@@ -1,0 +1,196 @@
+---
+title: "HW4"
+author: "Hoa Dang"
+date: "March 25, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+```
+
+
+```{r}
+
+data3 <- read.table("train_3.txt",header=F,sep=",")
+data8 <- read.table("train_8.txt",header=F,sep=",")
+
+data3$Class <- 1 #3 is 1
+data8$Class <- -1 #8 is -1
+
+zip_data <- rbind(data3,data8)
+y = zip_data$Class
+x = zip_data[,-257]
+
+```
+
+
+```{r}
+#Function 'train' specifies the decision stump
+#J represents the feature the decision choose to split
+#theta represents the threshold where the decision split at
+
+
+train <- function(X,w,y) {
+  numcol = ncol(X)
+  numrow = nrow(X)
+  
+  theta_vec = c()
+  err_vec = c()
+  min_err = c()
+  yhat = c()
+  
+  
+  for (j in 1:numcol) {
+    j_col = X[,j] #jcol = jth column of the matrix X
+    indx_jcol=order(j_col)
+    sorted_jcol=j_col[indx_jcol] #vector of only unique values
+    
+    j_col_uniq = unique(j_col) #remove dups so we don't have to iterate thru it more than 1 time
+    length_jcolUnq = length(j_col_uniq)
+    
+    y2=y[indx_jcol] #sort y according to the sorted index of column j 
+    w2=w[indx_jcol] #sort w according to the sorted index of column j 
+    
+    for (r in 1:length_jcolUnq) { #looping thru the unique values of column j
+      thresh = j_col_uniq[r] #threshold is theta
+      
+      neg_class_indx = thresh <= X[,j]
+      pos_class_indx = thresh > X[,j]
+      yhat[neg_class_indx] = -1
+      yhat[pos_class_indx] = 1
+      
+      err_vec[r]=sum(w2*(y2!=yhat))/sum(w2) #append error value at each threshold
+      
+    }
+    
+    theta_vec[j] = j_col_uniq[which.min(err_vec)] #get the threshold with the minimum error
+    min_err[j] = min(err_vec) #vector of minimum err or in each j column
+    
+  }
+  
+  j=which.min(min_err) #get the column where the error is minimum
+  theta=theta_vec[j] #get the optimal theta in the column
+  pars = list(j = j, theta = theta,m = 1)
+  return(pars)
+}
+
+classify <- function(X, pars) { 
+  #function returns a classified vector using decision stump
+  yhat = c()
+  j = pars$j
+  theta = pars$theta
+  
+  neg_class_indx <- X[,j]<=theta
+  pos_class_indx <- X[,j] > theta
+  
+  yhat[neg_class_indx] = -1
+  yhat[pos_class_indx] = 1
+  
+  return(yhat)
+}
+
+# agg_class function make the final y classfication under the adaboost, which is c_hat
+agg_class <- function(X, alpha, allpars) {
+  
+      n=nrow(X)
+      B=length(alpha)
+      
+      yhat_mat=matrix(NA,nrow=B,ncol=n)
+        
+      for(b in 1:B){
+          yhat_mat[b,]=alpha[b]*classify(X,allpars[[b]])
+      }
+      
+      yhat=apply(yhat_mat,2,sum)
+      return(sign(yhat))
+}
+
+#find alpha, allpars
+#parameter: X,y, and B weak learners (so have to run loop B times)
+AdaBoost=function(X,y,B){
+  
+      n=nrow(X)
+  
+      w=1/n # assign weight to 1/n
+      w_vec=rep(w,times=n)
+  
+      alpha=rep(NA,times=B)
+      allpars=rep(list(list()),length=B)
+  
+
+      for(b in 1:B){
+          # use train function to train parameters and append to allpars
+          pars=train(X,w_vec,y)
+          allpars[[b]]=pars
+          
+          # classify the label using pars 
+          label=classify(X,pars)
+          
+          # calculate error
+          error_ind=(y!=label)
+          w_error_vector=w_vec[error_ind]
+          error=sum(w_error_vector)/sum(w_vec)
+          
+          # calculate alpha 
+          alpha_value=log((1-error)/error)
+          alpha[b]=alpha_value 
+          
+          #calculate the updated weight based on the previous classifier error
+          w_vec=w_vec*exp(alpha_value*error_ind)
+    
+    
+}
+      return (list(alpha=alpha,allpars=allpars))
+}
+
+```
+
+```{r}
+
+n = nrow(x)
+index<-sample.int(n)
+B=30
+train_error=matrix(0,nrow=B,ncol=5)
+test_error=matrix(0,nrow=B,ncol=5)
+
+
+#folds <- cut(seq(1,nrow(x)),breaks=10,labels=FALSE)
+
+
+  
+for(cv in 1:5){
+    
+    
+    test.index<-index[(n*(cv-1)/5):(n*cv/5)]
+    
+    test.x=x[test.index,]
+    train.x=x[-test.index,]
+    test.y=y[test.index]
+    train.y=y[-test.index]
+    
+    ada<-AdaBoost(train.x,train.y,B)
+    alpha <- ada$alpha
+    allpars <- ada$allpars
+    
+    for(b in 1:B){
+    alphab = alpha[1:b]
+    parsb = allpars[1:b]
+      
+    f.train=agg_class(train.x,alphab,parsb)
+    train_error[b,cv]=mean(f.train!=train.y)
+    
+    f.test=agg_class(test.x,alphab,parsb)
+    test_error[b,cv]=mean(f.test!=test.y)
+    
+    }
+    print(cv)
+}
+```
+
+
+```{r}
+plot(seq(1:B),rowMeans(test_error),ylim=c(0.05,.2),main="Train and Test CV Error on B weak learners",xlab="Mean Error",type="l")
+lines(seq(1:B),rowMeans(train_error))
+```
