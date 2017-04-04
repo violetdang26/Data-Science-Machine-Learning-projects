@@ -1,0 +1,83 @@
+---
+title: "HW3"
+author: "Hoa Dang"
+date: "March 2, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r results='hide', message=FALSE, warnings=FALSE}
+library(caret)
+library(e1071)
+```
+
+##Load Data
+```{r}
+train5 <- read.table("train.5.txt",header=F,sep=",")
+train6 <- read.table("train.6.txt",header=F,sep=",")
+```
+
+##Split data into train and test set
+```{r}
+set.seed(123)
+train5_ind <- sample(seq_len(nrow(train5)), size = .8*nrow(train5))
+train6_ind <- sample(seq_len(nrow(train6)), size = .8*nrow(train6))
+
+X_train <- rbind(train5[train5_ind, ],train6[train6_ind, ])
+X_test <- rbind(train5[-train5_ind, ],train6[-train6_ind, ])
+
+y_train <- factor(c(rep("5", length(train5_ind)), rep("6",length(train6_ind))))
+y_test <- factor(c(rep("5", nrow(train5) - length(train5_ind)), 
+                 rep("6", nrow(train6) - length(train6_ind))))
+
+```
+
+#Train Linear SVM Soft Margin and Validation plot
+
+```{r, warnings=FALSE}
+tune_linear <- tune.svm(x = X_train, y = y_train,
+                     cost = seq(0.001, 0.08, 0.002), kernel="linear", scale = FALSE)
+plot(tune_linear, main = "Cross Validation on Cost - Linear SVM")
+
+```
+
+##Train an SVM with soft margin and RBF kernel + Validation Plot
+```{r,warnings=FALSE}
+tune_rbf <- tune.svm(x = X_train, y = y_train, cost = seq(1, 10, 2),
+                      gamma = seq(0.004, 0.04, 0.004), kernel="radial", scale=FALSE)
+plot(tune_rbf, type = "contour", main = "Cross Validation on Cost and Gamma - RBF-SVM")
+```
+
+```{r}
+misclass <- function(pred,label) {
+  accurate <- diag(table(pred,label))
+  accuracy_score <- sum(accurate/length(label))
+
+  print(1 - accuracy_score)
+}
+```
+
+## Select and train test data with the best model
+```{r}
+bestlinear <- tune_linear$best.model
+bestrbf <- tune_rbf$best.model
+
+pred_linear <- predict(bestlinear, X_test)
+pred_rbf <- predict(bestrbf, X_test)
+
+```
+
+###The error for the SVM Soft Margin with linear Kernel is
+```{r}
+misclass(pred_linear,y_test)
+```
+
+###The error for the SVM Soft Margin with RBF Kernel is
+```{r}
+misclass(pred_rbf,y_test)
+```
+
+
