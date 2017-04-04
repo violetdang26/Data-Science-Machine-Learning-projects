@@ -1,0 +1,200 @@
+---
+author: "Hoa Dang - hd2366"
+date: "Nov 23, 2016"
+output: pdf_document
+---
+
+```{r, echo = FALSE}
+set.seed(1) # Please don't remove this code!
+```
+
+1. Create synthetic regression data, with 100 observations and 10 predictor variables:
+```{r}
+n <- 100
+p <- 10
+s <- 3
+set.seed(0)
+x <- matrix(rnorm(n*p), n, p)
+b <- c(-0.7, 0.7, 1, rep(0, p-s))
+y <- x %*% b + rt(n, df=2)
+lm.coefs <- coef(lm(y ~ x+0))
+```
+Using linear regression, we pick out the relevant predictor are x1,x3 and x4
+
+2. Note that the noise in the above simulation (the difference between y and x %*% b) was created from the rt() function, which draws t-distributed random variables. The t- distribution has thicker tails than the normal distribution, so we are more likely to see large noise terms than we would if we used a normal distribution. Verify this by plotting the normal density and the t-density on the same plot, with the latter having 3 degrees of freedom. 
+
+```{r}
+z <- seq(-3, 3, length=100)
+hz <- dnorm(z)
+
+plot(z, hz, type="l", lty=2, xlab="x value",
+  ylab="Density", main="T (in blue) vs Normal Distribution (dot line)")
+
+lines(z, dt(z,3), lwd=2, col="blue")
+```
+
+3. Because we know that the noise in our regression has thicker tails than the normal distribution, we are more likely to see outliers. Hence we’re going to use the Huber loss function, which is more robust to outliers:
+
+```{r}
+psi <- function(r, c = 1) {
+  return(ifelse(r^2 > c^2, 2*c*abs(r) - c^2, r^2))
+}
+
+huber.loss <- function(beta) {
+  #return sum of psi() applied to the residuals
+  return(sum(psi(y - x %*% beta)))
+}
+```
+
+4. Use Gradient Descent to estimate the coefficients beta that minimize the Huber loss when regression y on x. 
+```{r}
+library(numDeriv)
+grad.descent = function(f, x0, max.iter=200, step.size=0.05,stopping.deriv=0.01, ...) {
+  
+  n = length(x0)
+  xmat = matrix(0,nrow=n,ncol=max.iter)
+  xmat[,1] = x0
+  
+  for (k in 2:max.iter) {
+    # Calculate the gradient
+    grad.cur = grad(f,xmat[,k-1],...) 
+    
+    # Should we stop?
+    if (all(abs(grad.cur) < stopping.deriv)) {
+      k = k-1; break
+    }
+    
+    # Move in the opposite direction of the grad
+    xmat[,k] = xmat[,k-1] - step.size * grad.cur
+  }
+
+  xmat = xmat[,1:k] # Trim
+  return(list(x=xmat[,k], xmat=xmat, k=k))
+}
+
+beta = rep(0, p)
+gd<-grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.001, stopping.deriv = 0.1)
+#Return the number of iterations
+gd$k
+#Return the final coefficients
+gd$x
+```
+
+5. Construct a vector obj of the values objective function encountered at each step of gradient descent
+```{r}
+obj <- rep(NA,gd$k)
+for (i in 1:gd$k) {
+  obj[i] <- huber.loss(gd$xmat[,i])
+}
+plot((1:gd$k),obj)
+```
+
+At the beginning, the function values drop quickly, and slower toward the end
+
+6. Review the impact of changing step size and plot the impact
+```{r}
+gd2<-grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.1, stopping.deriv = 0.1)
+obj2 <- rep(NA,gd2$k)
+for (i in 1:gd2$k) {
+  obj2[i] <- huber.loss(gd2$xmat[,i])
+}
+n <- gd2$k
+plot((150:n),obj2[150:n])
+```
+
+The criterion values bouncing back and forth in the last 50 iterations instead of decreasing in each step. The gradient does not converge at the end. The coeffient estimates also bounce up and down with each iteration, confirmed by reviewing the xmat matrix.
+
+7. Implement Proximal Gradient Descent (sparse gradient descent)
+```{r}
+lm.coefs
+gd$x
+
+sparse.grad.descent = function(f, x0, max.iter=200, step.size=0.05,stopping.deriv=0.01, ...) {
+  
+  n = length(x0)
+  xmat = matrix(0,nrow=n,ncol=max.iter)
+  xmat[,1] = x0
+  
+  for (k in 2:max.iter) {
+    # Calculate the gradient
+    grad.cur = grad(f,xmat[,k-1],...) 
+    
+    if (all(abs(grad.cur) < stopping.deriv)) {
+      k = k-1; break
+    }
+    # Move in the opposite direction of the grad
+    xmatv <- xmat[,k-1] - step.size * grad.cur
+    xmatv <- ifelse(abs(xmatv)<.05,0,xmatv)
+    xmat[,k] = xmatv
+  }
+
+  xmat = xmat[,1:k] # Trim
+  return(list(x=xmat[,k], xmat=xmat, k=k))
+}
+
+gd.sparse<-sparse.grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.001, stopping.deriv = 0.1)
+gd.sparse$x
+```
+
+The Sparse Gradient Descent Estimates seem to be closer to our generated beta
+
+8.
+```{r}
+MSE <- function(beta) {
+  return(sum((y - x %*% beta)^2))
+}
+
+MSE(b)
+MSE(gd$x)
+MSE(gd.sparse$x)
+
+```
+
+The sparse estimate of the vector has the smallest MSE compared to the true coefficients b.
+
+9.
+```{r}
+set.seed(10)
+x <- matrix(rnorm(n*p), n, p)
+y <- x %*% b + rt(n, df=2)
+lm.coefs1 <- coef(lm(y ~ x+0))
+gd1 <- grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.001, stopping.deriv = 0.1)
+gd.sparse1 <- sparse.grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.001, stopping.deriv = 0.1)
+
+#Estimates
+gd1$x
+gd.sparse1$x
+
+#The two estimates look quite comparables
+
+MSE(b)
+MSE(gd1$x)
+MSE(gd.sparse1$x)
+
+```
+
+In this case, regular gradient descent estimate of the vector has the smallest MSE compared to the true coefficients b. This suggests high variability in the sparse estimate (comparing this result to question 8).
+
+10. Repeat the experiment from question 9, generating 10 new copies of y, running gradient descent and sparse gradient descent, and recording each time the mean squared errors of each of their coefficient estimates to b.
+```{r}
+MSE.gd <- rep(NA,10)
+MSE.gds <- rep(NA,10)
+for (i in 1:10) {
+  x <- matrix(rnorm(n*p), n, p)
+  y <- x %*% b + rt(n, df=2)
+  gd1 <- grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.001, stopping.deriv = 0.1)
+  MSE.gd[i] <- MSE(gd1$x)
+  gd.sparse1 <- sparse.grad.descent(huber.loss,beta,max.iter = 200, step.size = 0.001, stopping.deriv = 0.1)
+  MSE.gds[i] <- MSE(gd.sparse1$x)
+}
+mean(MSE.gd)
+mean(MSE.gds)
+#the mean gradient descent sparse MSE is smaller
+
+min(MSE.gd)
+min(MSE.gds)
+#the minimum gradient descent MSE is smaller
+```
+
+
+The minimum of the MSEs with the sparse estimates is much smaller, but the mean of the MSEs for these estimates is larger. This supports our interpretation – that the sparse estimate MSE has high variance.
