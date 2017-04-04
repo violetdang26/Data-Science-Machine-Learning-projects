@@ -1,5 +1,4 @@
 ---
-title: "HW2"
 author: "Hoa Dang"
 date: "February 18, 2017"
 output: html_document
@@ -9,7 +8,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-#Problem 3
 ```{r results='hide', message=FALSE, warnings=FALSE}
 library(MASS)
 library(dplyr)
