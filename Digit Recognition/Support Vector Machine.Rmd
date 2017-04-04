@@ -1,5 +1,4 @@
 ---
-title: "HW3"
 author: "Hoa Dang"
 date: "March 2, 2017"
 output: html_document
