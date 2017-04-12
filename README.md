@@ -1,3 +1,3 @@
 # Data-Science-Machine-Learning-projects
 
-A Collection of past Projects
+A Collection of Projects using R and Python
