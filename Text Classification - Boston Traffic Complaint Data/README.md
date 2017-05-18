@@ -7,3 +7,6 @@ NLP methods used:
 - Topic Modeling:
     - Non-negative Matrix Factorization (NMF)
     - Latent Dirichlet allocation (LDA)
+
+Conclusion:
+- We were able to create 10 new topics to better classifies the comments. The F1 Score increased to 90% from 77% with the existing categories using Character N-grams. 
